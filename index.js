@@ -7,27 +7,18 @@ app.use(express.json());
 
 const FAL_API_KEY = process.env.FAL_API_KEY;
 
-if (!FAL_API_KEY) {
-  console.error("❌ FAL_API_KEY не найден в Environment Variables!");
-}
-
 app.get('/', (req, res) => {
-  res.send('Neuro Backend v2 — Fal.ai (Flux Schnell) подключён ✅');
+  res.send('Neuro Backend v2.1 — Fal.ai Flux подключён ✅');
 });
 
 app.post('/generate', async (req, res) => {
   const { prompt } = req.body;
 
-  if (!prompt) {
-    return res.status(400).json({ error: "Промпт обязателен" });
-  }
-
-  if (!FAL_API_KEY) {
-    return res.status(500).json({ error: "API ключ не настроен на сервере" });
-  }
+  if (!prompt) return res.status(400).json({ error: "Промпт обязателен" });
+  if (!FAL_API_KEY) return res.status(500).json({ error: "API ключ не настроен" });
 
   try {
-    const response = await fetch("https://queue.fal.run/fal-ai/flux/schnell", {
+    const response = await fetch("https://fal.run/fal-ai/flux/schnell", {
       method: "POST",
       headers: {
         "Authorization": `Key ${FAL_API_KEY}`,
@@ -35,31 +26,36 @@ app.post('/generate', async (req, res) => {
       },
       body: JSON.stringify({
         prompt: prompt + ", highly detailed, realistic, nsfw, 18+, adult content",
-        image_size: "portrait_9_16",   // вертикальный формат — лучше для чата
+        image_size: "portrait_9_16",
         num_inference_steps: 4,
         guidance_scale: 3.5,
-        num_images: 1
+        num_images: 1,
+        sync: true   // важный параметр для прямого ответа
       })
     });
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Fal.ai error: ${response.status} - ${errorText}`);
+    }
+
     const data = await response.json();
 
-    if (data.images && data.images[0] && data.images[0].url) {
+    if (data.images && data.images.length > 0 && data.images[0].url) {
       res.json({
         success: true,
-        imageUrl: data.images[0].url,
-        message: "Flux Schnell сгенерировал изображение"
+        imageUrl: data.images[0].url
       });
     } else {
-      res.status(500).json({ error: "Не удалось получить изображение от Fal.ai" });
+      res.status(500).json({ error: "Fal.ai не вернул изображение" });
     }
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Ошибка соединения с Fal.ai" });
+    console.error("Fal.ai error:", error.message);
+    res.status(500).json({ 
+      error: "Ошибка генерации. Попробуй другой промпт или проверь ключ." 
+    });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Fal.ai Backend запущен`);
-});
+app.listen(PORT, () => console.log(`✅ Backend запущен`));
